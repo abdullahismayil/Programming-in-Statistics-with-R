@@ -1,0 +1,244 @@
+---
+title: 'Programming in statistics: Assignment 3'
+author: "Abdullah Ismayilzada"
+date: "26/09/2023"
+output:
+  pdf_document: 
+    extra_dependencies: ["xcolor"]
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Instructions
+
+A report with your solutions should be uploaded to Canvas. In addition, upload all `.R` files containing the code needed to produce your solution. The report should be a PDF or Word document produced using R Markdown. It should be a self-explanatory document, i.e., understandable without having to read the assignment specification. The report should contain the name of the assignment, your name and date, the problems that you are trying to solve as well as the solutions (including explanatory text, R-code, tables/figures etc.). 
+
+The aim of this course is for you to enhance your R programming skills, and learning by doing is really the way to get there. That said, you are encouraged to discuss course material with each other. However, the solutions and the report you hand in should be your own work.
+
+
+
+## Data
+The files `Earthquakes1.txt` and `Earthquakes2.txt` contain records of 782 earthquakes from 1/1/2001 to 1/1/2023. A description of the variables included in the files can be found in the table below.
+
+Variable name  | Description
+------------- | --------------------------------------------------------------------
+ID            | The ID of the earthquake
+title         | title name given to the earthquake
+magnitude     | The magnitude of the earthquake
+date_time     | date and time
+cdi           | The maximum reported intensity for the event range
+mmi           | The maximum estimated instrumental intensity for the event
+alert         | The alert level - “green”, “yellow”, “orange”, and “red”
+tsunami       | "1" for events in oceanic regions and "0" otherwise
+sig           | A number describing how significant the event is. Larger numbers indicate a more significant event. This value is determined on a number of factors, including: magnitude, maximum MMI, felt reports, and estimated impact
+net           | The ID of a data contributor. Identifies the network considered to be the preferred source of information for this event.
+nst           | The total number of seismic stations used to determine earthquake location.
+dmin          | Horizontal distance from the epicenter to the nearest station
+gap           | The largest azimuthal gap between azimuthally adjacent stations (in degrees). In general, the smaller this number, the more reliable is the calculated horizontal position of the earthquake. Earthquake locations in which the azimuthal gap exceeds 180 degrees typically have large location and depth uncertainties
+magType       | The method or algorithm used to calculate the preferred magnitude for the event
+depth         | The depth where the earthquake begins to rupture
+latitude / longitude  |   coordinate system by means of which the position or location of any place on Earth's surface can be determined and described
+location      | location within the country
+continent     | continent of the earthquake hit country
+country       | affected country
+
+
+
+## Problems to solve
+
+### "Cleaning" Data
+
+1) Use the function `read.table` to import the data from the two txt-files into two objects. Then, use the function `merge` to combine the two data objects from into one object assigned the name `Earthquakes`. Use the variable `ID` (common to both objects) for merging.
+
+```{r}
+# Reading data from the first text file into an object
+Earthquakes1 <- read.table("C:\\Users\\HP\\Documents\\Earthquakes1.txt", header = TRUE, sep = ",") 
+
+# Reading data from the second text file into another object
+Earthquakes2 <- read.table("C:\\Users\\HP\\Documents\\Earthquakes2.txt", header = TRUE, sep = ",")
+
+# Merging the two data objects based on the "ID" variable
+Earthquakes <- merge(Earthquakes1, Earthquakes2, by = "ID")
+```
+
+
+
+
+
+2) Install and load the package `VIM` and use the function `aggr` to inspect the amount of missing data. Describe the missingness pattern.
+
+```{r}
+# Loading the VIM package
+library(VIM)
+
+# Using the aggr function to inspect missing data
+aggr(Earthquakes, numbers = TRUE)
+```
+
+3) After closer inspection of the data you might realize that the variables `location`, `country`, and `continent` also has missing values, but these are not categorized as `NA`. Correct this by recoding these missing values as `NA`. Drop the unused level from the Earthquakes data by using the function `droplevels`.
+
+```{r}
+# Recodeing non-NA missing values to NA in selected variables
+Earthquakes$location <- ifelse(Earthquakes$location == "", NA, Earthquakes$location)
+Earthquakes$country <- ifelse(Earthquakes$country == "", NA, Earthquakes$country)
+Earthquakes$continent <- ifelse(Earthquakes$continent == "", NA, Earthquakes$continent)
+
+# Droping unused levels from the Earthquakes data
+Earthquakes <- droplevels(Earthquakes)
+```
+
+
+4) Again, use the function `aggr` to inspect the amount of missing data on the updated `Earthquakes` object. Describe the missingness pattern.
+
+```{r}
+aggr(Earthquakes, numbers = TRUE)
+```
+
+5) The variables `magType`,`tsunami`, `cdi`, and `mmi` represent nominal or ordinal variables. Count how many of these variables that are incorrectly classified as `integer` variables (Try to do it in one line of code without using `;`). Use, e.g., the functions `as.factor` and `as.ordered` to encode any such, incorrectly classified, nominal or ordinal variables as factors.
+```{r}
+sum(sapply(Earthquakes[c("magType", "tsunami", "cdi", "mmi")], function(x) !is.factor(x) && !is.ordered(x)))
+
+# Correcting variable types
+Earthquakes$magType <- as.factor(Earthquakes$magType)
+Earthquakes$tsunami <- as.factor(Earthquakes$tsunami)
+Earthquakes$cdi <- as.ordered(Earthquakes$cdi)
+Earthquakes$mmi <- as.ordered(Earthquakes$mmi)
+```
+
+
+6) The variable `date_time` contains the character type. Change it to the type of `Date`. (The function `as.Date` can be used, Note! you need to specify the format. Read the help document of `as.Date`)
+```{r}
+# The date_time format is "DD-MM-YYY, HH:MM:SS"
+# Converting "date_time" to Date format
+Earthquakes$date_time <- as.Date(Earthquakes$date_time, format = "%d-%m-%Y %H:%M")
+```
+
+
+
+7) Create a data set where you exclude the variables: `title`, `location`, and `net`.
+
+```{r}
+# Creating a new dataset excluding specified variables
+Earthquakes <- Earthquakes[, !(names(Earthquakes) %in% c("title", "location", "net"))]
+```
+
+### Analysis
+8) Write a function that can be used to produce a data set without missing values. The function should at least have the formal arguments `data` and `type`, where `data` represents the original data containing missing values and `type` allows the user to specify how the missingness should be handled (read slides on missing data and imputation on Canvas). Depending on the user specified value for `type`, the function should output a data object where the missing values have been handled in one of the following ways: 
+
+```{r}
+handle_missing_data <- function(data, type = "complete", ...) {
+  if (type == "complete") {
+    # Option 1: Deleting observations with missing values
+    complete_data <- na.omit(data)
+    return(complete_data)
+  } else if (type == "hotdeck") {
+    # Option 2: Imputing missing values using hot deck imputation
+    imputed_data <- Hmisc::impute(data, method = "random")
+    return(imputed_data)
+  } else if (type == "mice") {
+    # Option 3: Imputing missing values using multiple imputation with mice package
+    require(mice)
+    imputed_data <- mice::mice(data, ...)
+    return(imputed_data)
+  } else {
+    stop("Invalid 'type' argument. Choose from 'complete', 'hotdeck', or 'mice'.")
+  }
+}
+```
+
++ **G level**:  two options of handling missing data should be included in the function: 1) observations with missing values on any of the variables have been deleted (used for complete-case analysis); 2) missing values have been imputed by hot deck imputation.
++ **VG level**: The options from G level above should be included in the function as well as a third option: 3) missing values should be imputed by multiple imputation using the function `mice` in the package `mice`. You should use the argument ellipsis `...` to allow users to pass arguments other than the default to `mice`. If the user chooses this option, `type = mice`, the returned object should contain all imputed datasets.
+
+
+9) Create a data object with (hot deck) imputed missing values using your function for handling missing data (from 8) and your data set (from 7).
+
+```{r}
+# Loading the Hmisc package
+library(Hmisc)
+
+# Original dataset without missing values
+original_data <- Earthquakes
+
+# Defining a vector of column names to include in imputation (exclude non-numeric columns)
+columns_to_impute <- colnames(original_data)[sapply(original_data, is.numeric)]
+
+# Using custom function to impute missing values using hot deck imputation
+imputed_data_hotdeck <- handle_missing_data(original_data[, columns_to_impute], type = "hotdeck")
+```
+
+
+10) Use the ggplot2 package to produce box plots of `magnitude`, for different years , all in one figure. Comment on the plot. (Hint! use the function `format`)
+
+```{r}
+# Loading the ggplot2 package 
+library(ggplot2)
+
+# Extracting the year from the 'date_time' column and create the 'year' column
+Earthquakes$year <- as.integer(format(Earthquakes$date_time, "%Y"))
+
+# Creating a box plot for magnitude by year
+ggplot(Earthquakes, aes(x = factor(year), y = magnitude)) +
+  geom_boxplot() +
+  labs(title = "Box Plots of Magnitude by Year", x = "Year", y = "Magnitude") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+  
+  From the Box Plots above, it can be seen that magnitudes of earthquakes fluctuate over the years.
+  Even, there are outliers to a considerable extend.
+  But in general, it can be said that most of the earthquakes magnitudes are between 6.5-7.5 over the years.
+  
+
+
+
+
+
+
+11) Read the help of the function `aggregate`.(type `?aggregate` in Console) Then use this function to make a data frame with four columns that specify the average of `magnitude` for a given `country`,`tsunami`, and `cdi`.
+
+```{r}
+# Using the aggregate function to calculate the average magnitude
+result <- aggregate(magnitude ~ country + tsunami + cdi, data = Earthquakes, FUN = mean)
+
+# Renaming the resulting columns
+colnames(result) <- c("country", "tsunami", "cdi", "average_magnitude")
+
+# Displaying the result
+print(result)
+```
+
+12) Use the package `tree` to fit a tree on the data you made in step 11. The tree must use other variables (`country`,`tsunami`, and `cdi`) to estimate the `magnitude`. Then report the training error of the model, and comment on the model. How do you interpret the learned tree? 
+
+```{r}
+# Loading the tree package
+library(tree)
+
+# Fitting a decision tree model
+model <- tree(average_magnitude ~ country + tsunami + cdi, data = result)
+
+# Summarizing the model
+summary(model)
+
+# Making predictions on the training data
+predictions <- predict(model, newdata = result)
+
+# Calculating the training error (RMSE)
+training_error <- sqrt(mean((result$average_magnitude - predictions)^2))
+cat("Training Error (RMSE):", training_error, "\n")
+
+# Visualizing the tree
+plot(model)
+text(model)
+```
+
+According to the result of the model, it can be seen that Training Error(RMSE) is ~ 0,336 which can be accepted as a lower value so it indicates that model prediction on training model gives close results to the actual values of it.
+
+The decision tree provides  model for predicting average_magnitude based on the cdi variables, because it contains the most information  for estimating the average_magnitude. It can be seen that visualization of learning tree includes 4 nodes in total which means it divide data in 4 different groups based on cdi values. As shown on learning tree plot above, although, there are 4 different nodes, all average_magnutide values change between 6.721 -  7.255 that one can also infer that the model gives close results.
+
+
+
+
